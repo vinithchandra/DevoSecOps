@@ -1,0 +1,115 @@
+# Tempo Distributed Tracing
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: tempo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      serviceAccountName: tempo
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: tempo
+        image: grafana/tempo:2.5.0
+        args:
+        - -config.file=/etc/tempo/config.yaml
+        ports:
+        - containerPort: 3100
+          name: http
+        - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 4318
+          name: otlp-http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/tempo
+        - name: storage
+          mountPath: /tmp/tempo
+      volumes:
+      - name: config
+        configMap:
+          name: tempo-config
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9095
+    
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+    
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/traces
+    
+    compactor:
+      compaction:
+        block_retention: 48h
+    
+    metrics_generator:
+      processor:
+        local_blocks:
+          filter_server_spans: false
+      storage:
+        path: /tmp/tempo/generator/traces
+      remote_write:
+        - url: http://prometheus-k8s.monitoring.svc.cluster.local:9090/api/v1/write
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels:
+    app: tempo
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 3100
+    targetPort: http
+  - name: otlp-grpc
+    port: 4317
+    targetPort: otlp-grpc
+  - name: otlp-http
+    port: 4318
+    targetPort: otlp-http
+  selector:
+    app: tempo

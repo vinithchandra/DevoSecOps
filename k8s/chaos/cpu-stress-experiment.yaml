@@ -1,0 +1,22 @@
+# Chaos Mesh CPU Stress Experiment
+# For Experiment 3: SLO Calibration and Experiment 5: Tenant Isolation
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-experiment
+  namespace: tenant-a
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - tenant-a
+    labelSelectors:
+      app: worker
+  stressors:
+    cpu:
+      workers: 4
+      load: 100
+  duration: "5m"
+  scheduler:
+    cron: "@every 4h"

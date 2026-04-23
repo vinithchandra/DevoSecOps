@@ -1,0 +1,64 @@
+# SLO Burn Rate Alerting Rules
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: slo-burn-rate-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: slo-burn-rate
+    rules:
+    - alert: SLOBurnRateHigh1h
+      expr: |
+        (
+          sum(rate(http_requests_total{code=~"5.."}[1h])) /
+          sum(rate(http_requests_total[1h]))
+        ) > (14.4 * (1 - 0.999))
+      for: 2m
+      labels:
+        severity: critical
+        slo: availability
+      annotations:
+        summary: "SLO burn rate too high (1h window)"
+        description: "The 1h error rate is {{ $value | humanizePercentage }} which exceeds 14.4x the SLO budget"
+    - alert: SLOBurnRateHigh6h
+      expr: |
+        (
+          sum(rate(http_requests_total{code=~"5.."}[6h])) /
+          sum(rate(http_requests_total[6h]))
+        ) > (6 * (1 - 0.999))
+      for: 15m
+      labels:
+        severity: warning
+        slo: availability
+      annotations:
+        summary: "SLO burn rate elevated (6h window)"
+        description: "The 6h error rate is {{ $value | humanizePercentage }} which exceeds 6x the SLO budget"
+    - alert: LatencySLOBurnRate1h
+      expr: |
+        (
+          sum(rate(http_request_duration_seconds_bucket{le="0.5"}[1h])) /
+          sum(rate(http_request_duration_seconds_count[1h]))
+        ) < (1 - 14.4 * (1 - 0.99))
+      for: 2m
+      labels:
+        severity: critical
+        slo: latency
+      annotations:
+        summary: "Latency SLO burn rate too high (1h)"
+        description: "p99 latency exceeds 500ms SLO at 14.4x burn rate"
+    - alert: LatencySLOBurnRate6h
+      expr: |
+        (
+          sum(rate(http_request_duration_seconds_bucket{le="0.5"}[6h])) /
+          sum(rate(http_request_duration_seconds_count[6h]))
+        ) < (1 - 6 * (1 - 0.99))
+      for: 15m
+      labels:
+        severity: warning
+        slo: latency
+      annotations:
+        summary: "Latency SLO burn rate elevated (6h)"
+        description: "p99 latency exceeds 500ms SLO at 6x burn rate"

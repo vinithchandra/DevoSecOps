@@ -1,0 +1,53 @@
+# Security Alerting Rules
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: security
+    rules:
+    - alert: FalcoCriticalAlert
+      expr: rate(falco_alerts_total{priority="Critical"}[5m]) > 0
+      for: 1m
+      labels:
+        severity: critical
+        team: security
+      annotations:
+        summary: "Falco critical alert: {{ $labels.rule }}"
+        runbook: "https://docs.platform.dev/runbooks/falco-critical"
+    - alert: GatekeeperViolation
+      expr: increase(gatekeeper_violations_total[5m]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        team: security
+      annotations:
+        summary: "OPA Gatekeeper violations spike: {{ $value }} in 5m"
+    - alert: TrivyCriticalCVE
+      expr: trivy_vulnerabilities_total{severity="CRITICAL"} > 0
+      for: 5m
+      labels:
+        severity: critical
+        team: security
+      annotations:
+        summary: "Critical CVE in image {{ $labels.image }}: {{ $labels.vulnerability_id }}"
+    - alert: CrossTenantNetworkProbe
+      expr: rate(falco_alerts_total{rule="Detect cross-tenant network access"}[5m]) > 0
+      for: 1m
+      labels:
+        severity: critical
+        team: security
+      annotations:
+        summary: "Cross-tenant network probe detected from {{ $labels.namespace }}"
+    - alert: PrivilegeEscalationAttempt
+      expr: rate(falco_alerts_total{rule="Detect privilege escalation"}[5m]) > 0
+      for: 1m
+      labels:
+        severity: critical
+        team: security
+      annotations:
+        summary: "Privilege escalation in {{ $labels.namespace }}/{{ $labels.container }}"

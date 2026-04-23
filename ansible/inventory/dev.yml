@@ -1,0 +1,30 @@
+---
+# Ansible inventory for GCP instances
+# Generated dynamically via gcp_compute inventory plugin
+
+all:
+  vars:
+    ansible_user: sa_1049903200214
+    ansible_ssh_private_key_file: ~/.ssh/gcp_platform_key
+    env: dev
+    project_id: PROJECT_ID
+    region: us-central1
+  children:
+    gke_nodes:
+      vars:
+        node_type: gke-autopilot
+      children:
+        gke_nodes_us_central1:
+          vars:
+            zone: us-central1
+    cloud_sql:
+      vars:
+        db_type: postgres
+        db_version: "15"
+      hosts:
+        cloudsql-primary:
+          ansible_host: 10.0.2.3
+          db_role: primary
+        cloudsql-replica:
+          ansible_host: 10.0.2.4
+          db_role: replica

@@ -1,0 +1,53 @@
+# Istio Helm Values
+# Install: helm install istio-base istio/base -n istio-system -f values.yaml
+# helm install istiod istio/istiod -n istio-system -f values.yaml
+# helm install istio-ingress istio/gateway -n istio-system -f values.yaml
+
+profile: default
+
+meshConfig:
+  accessLogFile: /dev/stdout
+  accessLogEncoding: JSON
+  defaultConfig:
+    tracing:
+      zipkin:
+        address: tempo.monitoring.svc.cluster.local:9411
+    outboundTrafficPolicy:
+      mode: REGISTRY_ONLY
+
+global:
+  proxy:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    logLevel: warning
+  logAsJson: true
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1337
+
+pilot:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+gateways:
+  istio-ingressgateway:
+    autoscaleMin: 2
+    autoscaleMax: 5
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi

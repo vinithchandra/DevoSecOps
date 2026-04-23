@@ -1,0 +1,166 @@
+---
+# Node Hardening Role
+# Applies CIS Level 1 baseline and security configurations
+
+- name: Update all packages
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: dist
+    cache_valid_time: 3600
+
+- name: Install required security packages
+  ansible.builtin.apt:
+    name:
+      - auditd
+      - fail2ban
+      - ufw
+      - rkhunter
+      - chkrootkit
+      - aide
+    state: present
+
+- name: Configure auditd
+  ansible.builtin.template:
+    src: auditd.conf.j2
+    dest: /etc/audit/auditd.conf
+    owner: root
+    group: root
+    mode: '0640'
+  notify: restart auditd
+
+- name: Configure audit rules
+  ansible.builtin.template:
+    src: audit.rules.j2
+    dest: /etc/audit/rules.d/audit.rules
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart auditd
+
+- name: Enable and start auditd
+  ansible.builtin.service:
+    name: auditd
+    enabled: yes
+    state: started
+
+- name: Configure fail2ban
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+
+- name: Enable and start fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    enabled: yes
+    state: started
+
+- name: Configure UFW firewall
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+
+- name: Allow SSH through UFW
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+    direction: in
+
+- name: Allow HTTP through UFW
+  community.general.ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+
+- name: Allow HTTPS through UFW
+  community.general.ufw:
+    rule: allow
+    port: '443'
+    proto: tcp
+
+- name: Disable unused services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: no
+    state: stopped
+  loop:
+    - telnet
+    - rsh
+    - rlogin
+  ignore_errors: yes
+
+- name: Configure kernel parameters for security
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'net.ipv4.ip_forward', value: '0' }
+    - { name: 'net.ipv4.conf.all.send_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.default.send_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.accept_source_route', value: '0' }
+    - { name: 'net.ipv4.conf.default.accept_source_route', value: '0' }
+    - { name: 'net.ipv4.conf.all.accept_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.default.accept_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.secure_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.default.secure_redirects', value: '0' }
+    - { name: 'net.ipv4.conf.all.log_martians', value: '1' }
+    - { name: 'net.ipv4.conf.default.log_martians', value: '1' }
+    - { name: 'kernel.randomize_va_space', value: '2' }
+
+- name: Configure SSH hardening
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^{{ item.key }}"
+    line: "{{ item.key }} {{ item.value }}"
+    state: present
+  loop:
+    - { key: 'PermitRootLogin', value: 'no' }
+    - { key: 'PasswordAuthentication', value: 'no' }
+    - { key: 'PubkeyAuthentication', value: 'yes' }
+    - { key: 'Protocol', value: '2' }
+    - { key: 'X11Forwarding', value: 'no' }
+    - { key: 'MaxAuthTries', value: '3' }
+    - { key: 'ClientAliveInterval', value: '300' }
+    - { key: 'ClientAliveCountMax', value: '2' }
+  notify: restart ssh
+
+- name: Install AIDE for file integrity monitoring
+  ansible.builtin.apt:
+    name: aide
+    state: present
+
+- name: Initialize AIDE database
+  ansible.builtin.command: aide --init
+  args:
+    creates: /var/lib/aide/aide.db.new
+  register: aide_init
+
+- name: Move AIDE database to production
+  ansible.builtin.command: mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+  when: aide_init.changed
+
+- name: Configure AIDE cron job
+  ansible.builtin.cron:
+    name: "AIDE integrity check"
+    minute: "0"
+    hour: "3"
+    job: "/usr/bin/aide --check > /var/log/aide.log 2>&1"
+
+- name: Disable root account
+  ansible.builtin.user:
+    name: root
+    password: "!"
+
+- name: Remove unused packages
+  ansible.builtin.apt:
+    name:
+      - telnet
+      - rsh-server
+      - rsh-client
+    state: absent

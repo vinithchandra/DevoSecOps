@@ -1,0 +1,24 @@
+# Chaos Mesh Network Latency Experiment
+# For Experiment 3: SLO Calibration
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-latency-experiment
+  namespace: tenant-a
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - tenant-a
+    labelSelectors:
+      app: api
+  delay:
+    latency: "500ms"
+    correlation: "100"
+    jitter: "50ms"
+  duration: "5m"
+  direction: to
+  scheduler:
+    cron: "@every 2h"

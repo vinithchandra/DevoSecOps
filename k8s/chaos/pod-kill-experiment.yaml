@@ -1,0 +1,20 @@
+# Chaos Mesh Pod Kill Experiment
+# For Experiment 3: SLO Calibration
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-experiment
+  namespace: tenant-a
+spec:
+  action: pod-kill
+  mode: fixed-percent
+  value: "50"
+  duration: "5m"
+  selector:
+    namespaces:
+      - tenant-a
+    labelSelectors:
+      app: worker
+  scheduler:
+    cron: "@every 1h"

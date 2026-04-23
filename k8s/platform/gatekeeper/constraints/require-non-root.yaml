@@ -1,0 +1,40 @@
+# OPA Gatekeeper Constraint: Require Non-Root User
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8snonroot
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sNonRoot
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8snonroot
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          has_field(container, "securityContext")
+          container.securityContext.runAsUser == 0
+          msg := sprintf("Container %v must not run as root (runAsUser: 0)", [container.name])
+        }
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          not has_field(container, "securityContext")
+          msg := sprintf("Container %v must define securityContext with non-root user", [container.name])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sNonRoot
+metadata:
+  name: require-non-root
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces:
+      - "tenant-*"
+  enforcementAction: deny

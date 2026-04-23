@@ -1,0 +1,36 @@
+# OPA Gatekeeper Constraint: Require Resource Limits
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sresourcelimits
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sResourceLimits
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sresourcelimits
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          not container.resources.limits
+          msg := sprintf("Container %v must have resource limits defined", [container.name])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sResourceLimits
+metadata:
+  name: require-resource-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+      - apiGroups: ["apps"]
+        kinds: ["StatefulSet"]
+      - apiGroups: ["apps"]
+        kinds: ["DaemonSet"]
+    namespaces:
+      - "tenant-*"
+  enforcementAction: deny

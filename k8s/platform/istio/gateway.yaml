@@ -1,0 +1,109 @@
+# Istio Gateway for platform.dev
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: platform-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: platform-dev-tls
+    hosts:
+    - "*.platform.dev"
+    - "platform.dev"
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.platform.dev"
+    - "platform.dev"
+    tls:
+      httpsRedirect: true
+---
+# VirtualService for ArgoCD
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  hosts:
+  - argocd.platform.dev
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - route:
+    - destination:
+        host: argocd-server.argocd.svc.cluster.local
+        port:
+          number: 80
+---
+# VirtualService for Grafana
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  hosts:
+  - grafana.platform.dev
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - route:
+    - destination:
+        host: grafana.monitoring.svc.cluster.local
+        port:
+          number: 80
+---
+# VirtualService for n8n
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: n8n
+  namespace: platform-tools
+spec:
+  hosts:
+  - n8n.platform.dev
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - route:
+    - destination:
+        host: n8n.platform-tools.svc.cluster.local
+        port:
+          number: 80
+    timeout: 300s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+---
+# VirtualService for tenant APIs
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: tenant-api
+  namespace: istio-system
+spec:
+  hosts:
+  - "api-*.platform.dev"
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: api.tenant-a.svc.cluster.local
+        port:
+          number: 80
+    timeout: 30s

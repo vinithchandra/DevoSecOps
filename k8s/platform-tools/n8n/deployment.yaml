@@ -1,0 +1,185 @@
+# n8n Deployment on GKE
+# Uses Cloud SQL Postgres for persistence
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: n8n-secrets
+  namespace: platform-tools
+type: Opaque
+stringData:
+  # These should be mounted from External Secrets Operator in production
+  N8N_ENCRYPTION_KEY: "placeholder-replace-with-external-secret"
+  DB_HOST: "placeholder-replace-with-external-secret"
+  DB_PORT: "5432"
+  DB_NAME: "n8n"
+  DB_USER: "placeholder-replace-with-external-secret"
+  DB_PASSWORD: "placeholder-replace-with-external-secret"
+  WEBHOOK_URL: "https://n8n.platform.dev"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: n8n-sa
+  namespace: platform-tools
+  annotations:
+    iam.gke.io/gcp-service-account: n8n-sa@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: platform-tools
+  labels:
+    app: n8n
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: n8n
+  template:
+    metadata:
+      labels:
+        app: n8n
+        version: v1
+    spec:
+      serviceAccountName: n8n-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: n8n
+        image: n8nio/n8n:1.50.0
+        ports:
+        - containerPort: 5678
+        env:
+        - name: N8N_PORT
+          value: "5678"
+        - name: N8N_PROTOCOL
+          value: "http"
+        - name: N8N_HOST
+          value: "0.0.0.0"
+        - name: N8N_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: N8N_ENCRYPTION_KEY
+        - name: DB_TYPE
+          value: "postgresdb"
+        - name: DB_POSTGRESDB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: DB_HOST
+        - name: DB_POSTGRESDB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: DB_PORT
+        - name: DB_POSTGRESDB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: DB_NAME
+        - name: DB_POSTGRESDB_USER
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: DB_USER
+        - name: DB_POSTGRESDB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: DB_PASSWORD
+        - name: WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: n8n-secrets
+              key: WEBHOOK_URL
+        - name: EXECUTIONS_MODE
+          value: "queue"
+        - name: QUEUE_BULL_REDIS_HOST
+          value: "redis.platform-tools.svc.cluster.local"
+        - name: QUEUE_BULL_REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 5678
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 5678
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: n8n-data
+          mountPath: /home/node/.n8n
+      volumes:
+      - name: n8n-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: platform-tools
+  labels:
+    app: n8n
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 5678
+    protocol: TCP
+    name: http
+  selector:
+    app: n8n
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: n8n-hpa
+  namespace: platform-tools
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: n8n
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max

@@ -1,0 +1,50 @@
+# Istio VirtualService for n8n
+# Exposes n8n internally with mTLS
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: n8n
+  namespace: platform-tools
+spec:
+  hosts:
+  - n8n.platform-tools.svc.cluster.local
+  gateways:
+  - mesh
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: n8n.platform-tools.svc.cluster.local
+        port:
+          number: 80
+    timeout: 300s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: n8n
+  namespace: platform-tools
+spec:
+  host: n8n.platform-tools.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 3
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50

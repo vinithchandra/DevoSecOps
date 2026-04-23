@@ -1,0 +1,64 @@
+# Pre-commit hooks configuration
+# Install: pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            .*\.tfstate$|
+            .*.tfvars$
+          )$
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.92.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+      - id: terraform_tflint
+        args:
+          - --args=--call-module-type=all
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.1.0
+    hooks:
+      - id: hadolint-docker
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.40.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: ['-c', '.yamllint']
+
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.60.0
+    hooks:
+      - id: semgrep
+        args: ['--config', 'auto', '--error']

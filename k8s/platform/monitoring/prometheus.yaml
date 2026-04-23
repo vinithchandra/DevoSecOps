@@ -1,0 +1,55 @@
+# Prometheus Deployment with Mimir remote write
+
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: k8s
+  namespace: monitoring
+spec:
+  replicas: 2
+  serviceAccountName: prometheus-operator
+  serviceMonitorSelector:
+    matchLabels:
+      release: kube-prometheus-stack
+  resources:
+    requests:
+      memory: "400Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  retention: 30d
+  walCompression: true
+  remoteWrite:
+  - url: http://mimir.monitoring.svc.cluster.local:9009/api/v1/push
+    queueConfig:
+      maxSamplesPerSend: 10000
+      maxShards: 200
+      minShards: 1
+      maxRetries: 3
+    sendExemplars: true
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: standard
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-k8s
+  namespace: monitoring
+  labels:
+    app: prometheus
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
+  selector:
+    app: prometheus
+    prometheus: k8s

@@ -1,0 +1,272 @@
+{
+  "name": "Incident Response Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/incident",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Alertmanager Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "incident-response"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT status FROM kubernetes.pods WHERE namespace = '{{ $json.labels.namespace }}' LIMIT 10"
+      },
+      "id": "k8s-api-1",
+      "name": "Query Kubernetes API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{\n  \"query\": \"{\\\"query\\\": \\\"{\\\"range\\\": \\\"{\\\\\\\"start\\\\\\\": \\\\\\\"{{ $json.startsAt }}\\\\\\\", \\\\\\\"end\\\\\\\": \\\\\\\"now\\\\\\\"}}\\\", \\\"query\\\": \\\"{\\\\\\\"match\\\": {\\\\\\\"namespace\\\\\\\": \\\\\\\"{{ $json.labels.namespace }}\\\\\\\"}}}\\\"}\"\n}\n",
+        "options": {}
+      },
+      "id": "loki-api-1",
+      "name": "Query Loki Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 450]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "url": "https://api.github.com/repos/your-org/platform/actions/runs?per_page=5"
+      },
+      "id": "github-api-1",
+      "name": "Check Recent Deployments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "deployment-detected",
+              "leftValue": "={{ $json.deployment_detected }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-1",
+      "name": "Deployment Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://argocd-server.argocd.svc.cluster.local/api/v1/applications/{{ $json.labels.namespace }}/sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"dryRun\": false,\n  \"prune\": true,\n  \"strategy\": {\n    \"hook\": {},\n    \"kind\": \"rollback\"\n  }\n}"
+      },
+      "id": "argocd-rollback-1",
+      "name": "Trigger ArgoCD Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.pagerduty.com/incidents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"incident\": {\n    \"type\": \"incident\",\n    \"title\": \"{{ $json.labels.alertname }} - {{ $json.labels.namespace }}\",\n    \"service\": {\n      \"id\": \"{{ $json.service_id }}\",\n      \"type\": \"service_reference\"\n    },\n    \"urgency\": \"high\",\n    \"body\": {\n      \"type\": \"incident_body\",\n      \"content\": \"Alert: {{ $json }}\\n\\nPod Status: {{ $(\"Query Kubernetes API\").json }}\\n\\nRecent Logs: {{ $(\"Query Loki Logs\").json }}\\n\\nRecent Deployments: {{ $(\"Check Recent Deployments\").json }}\"\n    }\n  }\n}"
+      },
+      "id": "pagerduty-1",
+      "name": "Create PagerDuty Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "channel": "#incidents",
+        "text": "=🚨 Incident Alert\n\n**Alert**: {{ $json.labels.alertname }}\n**Namespace**: {{ $json.labels.namespace }}\n**Severity**: {{ $json.labels.severity }}\n**Pod Status**: {{ $(\"Query Kubernetes API\").json }}\n\nRunbook: https://docs.platform.dev/runbooks/{{ $json.labels.alertname }}",
+        "otherOptions": {}
+      },
+      "id": "slack-1",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [850, 550]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO `research.incidents` VALUES ('{{ $json.alert_id }}', '{{ $json.labels.alertname }}', '{{ $json.labels.namespace }}', '{{ $json.startsAt }}', CURRENT_TIMESTAMP())"
+      },
+      "id": "bigquery-1",
+      "name": "Log to BigQuery",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [1050, 375]
+    },
+    {
+      "parameters": {},
+      "id": "response-1",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 375]
+    }
+  ],
+  "connections": {
+    "Alertmanager Webhook": {
+      "main": [
+        [
+          {
+            "node": "Query Kubernetes API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query Loki Logs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Recent Deployments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Kubernetes API": {
+      "main": [
+        [
+          {
+            "node": "Deployment Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Loki Logs": {
+      "main": [
+        [
+          {
+            "node": "Deployment Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Recent Deployments": {
+      "main": [
+        [
+          {
+            "node": "Deployment Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deployment Detected?": {
+      "main": [
+        [
+          {
+            "node": "Trigger ArgoCD Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create PagerDuty Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger ArgoCD Rollback": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create PagerDuty Incident": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Log to BigQuery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to BigQuery": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-09T00:00:00.000Z",
+  "versionId": "1"
+}

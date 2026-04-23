@@ -1,0 +1,72 @@
+name: Deploy to Kubernetes
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      tenant:
+        description: 'Tenant to deploy'
+        required: true
+        default: 'tenant-a'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.0'
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: platform-cluster-${{ github.event.inputs.environment }}
+          location: us-central1
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Verify ArgoCD sync status
+        run: |
+          kubectl wait --for=condition=Available \
+            -n argocd \
+            deployment/argocd-server \
+            --timeout=300s
+
+      - name: Sync ArgoCD application
+        run: |
+          kubectl argo app sync ${{ github.event.inputs.tenant }} \
+            --server argocd-server.argocd.svc.cluster.local
+
+      - name: Wait for application to be healthy
+        run: |
+          kubectl argo app wait ${{ github.event.inputs.tenant }} \
+            --server argocd-server.argocd.svc.cluster.local \
+            --health \
+            --timeout 600s
+
+      - name: Post deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tenant: ${{ github.event.inputs.tenant }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: Success" >> $GITHUB_STEP_SUMMARY

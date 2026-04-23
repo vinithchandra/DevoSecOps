@@ -1,0 +1,47 @@
+---
+# Monitoring Agent Role
+# Deploys OpenTelemetry Collector as DaemonSet
+
+- name: Create monitoring directory
+  ansible.builtin.file:
+    path: /opt/monitoring
+    state: directory
+    mode: '0755'
+
+- name: Download OpenTelemetry Collector
+  ansible.builtin.get_url:
+    url: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.102.0/otelcol_0.102.0_linux_amd64.rpm
+    dest: /tmp/otelcol.rpm
+    mode: '0644'
+
+- name: Install OpenTelemetry Collector
+  ansible.builtin.yum:
+    name: /tmp/otelcol.rpm
+    state: present
+    disable_gpg_check: yes
+
+- name: Create OpenTelemetry Collector configuration
+  ansible.builtin.template:
+    src: otel-collector-config.yaml.j2
+    dest: /etc/otelcol-contrib/config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart otelcol
+
+- name: Enable and start OpenTelemetry Collector
+  ansible.builtin.systemd:
+    name: otelcol
+    enabled: yes
+    state: started
+
+- name: Install Node Exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+
+- name: Enable and start Node Exporter
+  ansible.builtin.service:
+    name: prometheus-node-exporter
+    enabled: yes
+    state: started

@@ -1,0 +1,118 @@
+# Alertmanager Configuration
+# Routes alerts to PagerDuty, Slack, and n8n webhooks
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+type: Opaque
+stringData:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'namespace', 'slo']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'slack-default'
+      routes:
+        - match:
+            severity: critical
+          receiver: 'pagerduty-critical'
+          continue: true
+        - match:
+            severity: critical
+          receiver: 'n8n-incident'
+        - match:
+            alertname: SLOBurnRateHigh1h
+          receiver: 'n8n-incident'
+        - match:
+            alertname: SLOBurnRateHigh6h
+          receiver: 'slack-slo'
+        - match:
+            team: security
+          receiver: 'slack-security'
+          continue: true
+        - match:
+            team: security
+            severity: critical
+          receiver: 'pagerduty-security'
+
+    receivers:
+      - name: 'slack-default'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/REPLACE'
+            channel: '#alerts'
+            title: '{{ .GroupLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Severity:* {{ .Labels.severity }}
+              *Namespace:* {{ .Labels.namespace }}
+              {{ end }}
+
+      - name: 'slack-slo'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/REPLACE'
+            channel: '#slo-alerts'
+            title: 'SLO Burn Rate Alert'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *SLO:* {{ .Labels.slo }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
+
+      - name: 'slack-security'
+        slack_configs:
+          - api_url: 'https://hooks.slack.com/services/REPLACE'
+            channel: '#security-alerts'
+            title: 'Security Alert'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Annotations.summary }}
+              *Runbook:* {{ .Annotations.runbook }}
+              {{ end }}
+
+      - name: 'pagerduty-critical'
+        pagerduty_configs:
+          - service_key: 'REPLACE'
+            severity: '{{ .GroupLabels.severity }}'
+
+      - name: 'pagerduty-security'
+        pagerduty_configs:
+          - service_key: 'REPLACE'
+            severity: '{{ .GroupLabels.severity }}'
+
+      - name: 'n8n-incident'
+        webhook_configs:
+          - url: 'http://n8n.platform-tools.svc.cluster.local/webhook/incident'
+            send_resolved: true
+
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'namespace']
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: main
+  namespace: monitoring
+spec:
+  replicas: 2
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  alertmanagerConfigSelector:
+    matchLabels:
+      release: kube-prometheus-stack

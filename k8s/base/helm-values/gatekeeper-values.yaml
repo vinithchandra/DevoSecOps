@@ -1,0 +1,44 @@
+# OPA Gatekeeper Helm Values
+# Install: helm install gatekeeper gatekeeper/gatekeeper -n gatekeeper-system -f values.yaml
+
+replicas: 3
+auditInterval: 60
+auditMatchKindOnly: true
+logLevel: INFO
+logDenies: true
+emitAdmissionEvents: true
+emitAuditEvents: true
+
+resources:
+  manager:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  audit:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+postInstall:
+  constraintTemplates:
+    enabled: true
+    labels:
+      gatekeeper.sh/system: "yes"

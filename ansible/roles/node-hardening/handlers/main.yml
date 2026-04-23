@@ -1,0 +1,17 @@
+---
+# Handlers for node-hardening role
+
+- name: restart auditd
+  ansible.builtin.service:
+    name: auditd
+    state: restarted
+
+- name: restart fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: restarted
+
+- name: restart ssh
+  ansible.builtin.service:
+    name: ssh
+    state: restarted

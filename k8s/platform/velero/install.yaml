@@ -1,0 +1,88 @@
+# Velero Backup for Disaster Recovery
+# Install: helm install velero vmware-tanzu/velero -n velero -f values.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+---
+# Velero BackupStorageLocation
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: gcp
+  objectStorage:
+    bucket: platform-velero-backups-PROJECT_ID
+    prefix: velero
+  config:
+    region: us-central1
+---
+# Velero VolumeSnapshotLocation
+apiVersion: velero.io/v1
+kind: VolumeSnapshotLocation
+metadata:
+  name: default
+  namespace: velero
+spec:
+  provider: gcp
+  config:
+    region: us-central1
+---
+# Scheduled backup - every 6 hours
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: platform-backup
+  namespace: velero
+spec:
+  schedule: "0 */6 * * *"
+  template:
+    includedNamespaces:
+    - argocd
+    - monitoring
+    - platform-tools
+    - tenant-a
+    - tenant-b
+    - tenant-c
+    ttl: "720h"
+    snapshotVolumes: true
+---
+# Scheduled backup - daily full cluster
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily-full-backup
+  namespace: velero
+spec:
+  schedule: "0 3 * * *"
+  template:
+    ttl: "2160h"
+    snapshotVolumes: true
+    includedNamespaces:
+    - "*"
+    excludedNamespaces:
+    - kube-system
+    - kube-node-lease
+    - istio-system
+    - gatekeeper-system
+    - falco
+    - cert-manager
+    - external-secrets
+    - velero
+---
+# Pre-dr-drill backup (triggered by n8n)
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: pre-dr-drill
+  namespace: velero
+spec:
+  includedNamespaces:
+  - tenant-a
+  - tenant-b
+  - tenant-c
+  ttl: "168h"
+  snapshotVolumes: true

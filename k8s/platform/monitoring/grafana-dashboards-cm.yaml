@@ -1,0 +1,36 @@
+# Grafana Dashboard ConfigMap - Auto-import dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  slo-dashboard.json: |
+    {{ .Files.Get "monitoring/dashboards/slo-dashboard.json" }}
+  security-overview.json: |
+    {{ .Files.Get "monitoring/dashboards/security-overview.json" }}
+  tenant-overview.json: |
+    {{ .Files.Get "monitoring/dashboards/tenant-overview.json" }}
+---
+# Grafana Dashboard Provider
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      editable: true
+      updateIntervalSeconds: 30
+      options:
+        path: /var/lib/grafana/dashboards
+        foldersFromFilesStructure: true

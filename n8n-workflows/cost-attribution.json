@@ -1,0 +1,252 @@
+{
+  "name": "Cost Attribution Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Monday 08:00 UTC Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  project.number,\n  project.id as project_id,\n  project.labels.tenant as tenant,\n  SUM(cost) as total_cost,\n  SUM(CASE WHEN usage.unit = 'byte-seconds' THEN usage.amount ELSE 0 END) as storage_bytes,\n  SUM(CASE WHEN usage.unit = 'seconds' THEN usage.amount ELSE 0 END) as compute_seconds\nFROM `PROJECT_ID.billing.gcp_billing_export_v1_XXXXXX`\nWHERE invoice.month = FORMAT_DATE('%Y%m', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))\nGROUP BY project.number, project.id, project.labels.tenant\nHAVING project.labels.tenant IS NOT NULL"
+      },
+      "id": "bigquery-billing-1",
+      "name": "Query BigQuery Billing Export",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  labels.tenant,\n  AVG(container_cpu_usage_seconds_total) as avg_cpu_seconds,\n  AVG(container_memory_working_set_bytes) as avg_memory_bytes,\n  SUM(container_cpu_usage_seconds_total) as total_cpu_seconds\nFROM `PROJECT_ID.gke_cluster.resource_usage`\nWHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\nGROUP BY labels.tenant"
+      },
+      "id": "prometheus-1",
+      "name": "Query Prometheus Usage Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  tenant,\n  SUM(query_count) as total_queries\nFROM `research.db_usage`\nWHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\nGROUP BY tenant"
+      },
+      "id": "bigquery-db-1",
+      "name": "Query DB Usage",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate cost efficiency score\nconst billingData = $input.item.json.billing;\nconst prometheusData = $input.item.json.prometheus;\nconst dbData = $input.item.json.db;\n\nconst efficiencyScores = [];\n\nfor (const tenant of billingData) {\n  const cost = tenant.total_cost;\n  const cpuUsage = prometheusData.find(p => p.tenant === tenant.tenant)?.total_cpu_seconds || 0;\n  const dbQueries = dbData.find(d => d.tenant === tenant.tenant)?.total_queries || 0;\n  \n  // Cost efficiency: cost per CPU second (lower is better)\n  const costPerCpu = cpuUsage > 0 ? cost / cpuUsage : 0;\n  \n  // Cost efficiency: cost per DB query (lower is better)\n  const costPerQuery = dbQueries > 0 ? cost / dbQueries : 0;\n  \n  // Overall efficiency score (normalized 0-100)\n  const efficiencyScore = Math.max(0, 100 - (costPerCpu * 1000 + costPerQuery * 0.1));\n  \n  efficiencyScores.push({\n    tenant: tenant.tenant,\n    total_cost: cost,\n    cpu_usage: cpuUsage,\n    db_queries: dbQueries,\n    cost_per_cpu: costPerCpu,\n    cost_per_query: costPerQuery,\n    efficiency_score: efficiencyScore\n  });\n}\n\nreturn efficiencyScores.map(score => ({ json: score }));"
+      },
+      "id": "code-1",
+      "name": "Calculate Efficiency Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build markdown report\nconst data = $input.all();\n\nlet report = `# Cost Attribution Report\\n`;\nreport += `**Period**: Last 7 days\\n`;\nreport += `**Generated**: ${new Date().toISOString()}\\n\\n`;\n\nreport += `## Cost Breakdown by Tenant\\n\\n`;\nreport += `| Tenant | Total Cost | CPU Usage | DB Queries | Cost/CPU sec | Cost/Query | Efficiency Score |\\n`;\nreport += `|--------|------------|-----------|------------|-------------|------------|------------------|\\n`;\n\nfor (const item of data) {\n  const d = item.json;\n  report += `| ${d.tenant} | $${d.total_cost.toFixed(2)} | ${d.cpu_usage.toFixed(0)} | ${d.db_queries.toFixed(0)} | $${d.cost_per_cpu.toFixed(4)} | $${d.cost_per_query.toFixed(6)} | ${d.efficiency_score.toFixed(1)}/100 |\\n`;\n}\n\nreport += `\\n## Analysis\\n\\n`;\n\nconst overBudget = data.filter(d => d.efficiency_score < 50);\nif (overBudget.length > 0) {\n  report += `### ⚠️ Tenants with Low Efficiency Score (< 50)\\n\\n`;\n  for (const tenant of overBudget) {\n    report += `- **${tenant.tenant}**: Efficiency score ${tenant.efficiency_score.toFixed(1)}/100\\n`;\n  }\n  report += `\\n`;\n}\n\nconst topEfficient = data.sort((a, b) => b.json.efficiency_score - a.json.efficiency_score).slice(0, 3);\nreport += `### ✅ Top 3 Most Efficient Tenants\\n\\n`;\nfor (const i = 0; i < topEfficient.length; i++) {\n  report += `${i + 1}. **${topEfficient[i].json.tenant}**: ${topEfficient[i].json.efficiency_score.toFixed(1)}/100\\n`;\n}\n\nreturn { json: { report } };"
+      },
+      "id": "code-2",
+      "name": "Build Markdown Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO `research.cost_attribution` VALUES (CURRENT_DATE(), '{{ $json.tenant }}', {{ $json.total_cost }}, {{ $json.efficiency_score }})"
+      },
+      "id": "bigquery-2",
+      "name": "Log to BigQuery",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#finops",
+        "text": "={{ $json.report }}",
+        "otherOptions": {}
+      },
+      "id": "slack-1",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "low-efficiency",
+              "leftValue": "={{ $json.efficiency_score }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-1",
+      "name": "Low Efficiency?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/your-org/platform/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"Low Cost Efficiency Alert: {{ $json.tenant }}\",\n  \"body\": \"Tenant {{ $json.tenant }} has a low cost efficiency score of {{ $json.efficiency_score }}/100 over the last 7 days.\\n\\n**Total Cost**: ${{ $json.total_cost }}\\n**Cost per CPU second**: ${{ $json.cost_per_cpu }}\\n**Cost per DB query**: ${{ $json.cost_per_query }}\\n\\nInvestigation required.\",\n  \"labels\": [\"finops\", \"cost-alert\"]\n}"
+      },
+      "id": "github-api-1",
+      "name": "Create GitHub Issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 300]
+    }
+  ],
+  "connections": {
+    "Monday 08:00 UTC Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query BigQuery Billing Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query BigQuery Billing Export": {
+      "main": [
+        [
+          {
+            "node": "Query Prometheus Usage Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Query DB Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Prometheus Usage Metrics": {
+      "main": [
+        [
+          {
+            "node": "Calculate Efficiency Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query DB Usage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Efficiency Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Efficiency Scores": {
+      "main": [
+        [
+          {
+            "node": "Build Markdown Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Markdown Report": {
+      "main": [
+        [
+          {
+            "node": "Log to BigQuery",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Slack": {
+      "main": [
+        [
+          {
+            "node": "Low Efficiency?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Efficiency?": {
+      "main": [
+        [
+          {
+            "node": "Create GitHub Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-09T00:00:00.000Z",
+  "versionId": "1"
+}

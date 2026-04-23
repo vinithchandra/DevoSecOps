@@ -1,0 +1,317 @@
+{
+  "name": "Tenant Onboarding Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/tenant-onboarding",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Tenant Signup Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "tenant-onboarding"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "unique-name",
+              "leftValue": "={{ $json.tenant_name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-1",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "secretId": "tenants/{{ $json.tenant_name }}/db"
+      },
+      "id": "secret-manager-1",
+      "name": "Create DB Credentials in Secret Manager",
+      "type": "n8n-nodes-base.googleCloudSecretManager",
+      "typeVersion": 1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/your-org/platform/contents/k8s/tenants/{{ $json.tenant_name }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"Add tenant {{ $json.tenant_name }}\",\n  \"content\": \"{{ $base64(tenant_namespace_yaml) }}\"\n}"
+      },
+      "id": "github-api-1",
+      "name": "Commit Tenant Config to Git",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://argocd-server.argocd.svc.cluster.local/api/v1/applications/{{ $json.tenant_name }}/sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "argocd-poll-1",
+      "name": "Poll ArgoCD Sync Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "sync-healthy",
+              "leftValue": "={{ $json.status.health.status }}",
+              "rightValue": "Healthy",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "sync-synced",
+              "leftValue": "={{ $json.status.sync.status }}",
+              "rightValue": "Synced",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-2",
+      "name": "Sync Healthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "name": "{{ $json.tenant_name }}.platform.dev",
+        "type": "CNAME",
+        "ttl": 300,
+        "rrdatas": ["{{ $json.ingress_ip }}"]
+      },
+      "id": "cloud-dns-1",
+      "name": "Register DNS Record",
+      "type": "n8n-nodes-base.googleCloudDns",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "from": "noreply@platform.dev",
+        "to": "={{ $json.email }}",
+        "subject": "Welcome to Platform - Your Tenant is Ready!",
+        "emailType": "html",
+        "message": "=<h1>Welcome to Platform!</h1><p>Your tenant <strong>{{ $json.tenant_name }}</strong> has been provisioned successfully.</p><p><strong>Access URL:</strong> https://{{ $json.tenant_name }}.platform.dev</p><p><strong>Plan:</strong> {{ $json.plan }}</p><p>Documentation: https://docs.platform.dev</p>"
+      },
+      "id": "sendgrid-1",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.sendGrid",
+      "typeVersion": 1,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO `research.tenant_lifecycle` VALUES ('{{ $json.tenant_name }}', '{{ $json.plan }}', CURRENT_TIMESTAMP(), 'provisioned')"
+      },
+      "id": "bigquery-1",
+      "name": "Log to BigQuery",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#provisioning",
+        "text": "=✅ New tenant provisioned\n\n**Tenant**: {{ $json.tenant_name }}\n**Plan**: {{ $json.plan }}\n**Email**: {{ $json.email }}\n**Time to provision**: {{ $now.minus($(\"Tenant Signup Webhook\").item.json.timestamp) }}",
+        "otherOptions": {}
+      },
+      "id": "slack-1",
+      "name": "Notify Ops Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {},
+      "id": "response-1",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1850, 300]
+    }
+  ],
+  "connections": {
+    "Tenant Signup Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "Create DB Credentials in Secret Manager",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Commit Tenant Config to Git",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create DB Credentials in Secret Manager": {
+      "main": [
+        [
+          {
+            "node": "Poll ArgoCD Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commit Tenant Config to Git": {
+      "main": [
+        [
+          {
+            "node": "Poll ArgoCD Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll ArgoCD Sync Status": {
+      "main": [
+        [
+          {
+            "node": "Sync Healthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Healthy?": {
+      "main": [
+        [
+          {
+            "node": "Register DNS Record",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register DNS Record": {
+      "main": [
+        [
+          {
+            "node": "Log to BigQuery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome Email": {
+      "main": [
+        [
+          {
+            "node": "Log to BigQuery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to BigQuery": {
+      "main": [
+        [
+          {
+            "node": "Notify Ops Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Ops Team": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-09T00:00:00.000Z",
+  "versionId": "1"
+}

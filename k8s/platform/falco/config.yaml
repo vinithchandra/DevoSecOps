@@ -1,0 +1,181 @@
+# Falco Configuration
+# Custom rules for security monitoring
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules
+  namespace: falco
+data:
+  # Custom rule: Detect exec in container
+  custom_rules.yaml: |
+    - rule: Detect exec in container
+      desc: Detect shell execution inside containers
+      condition: >
+        spawned_process and
+        container and
+        shell_procs and
+        not user_expected_shell_spawn
+      output: >
+        Shell spawned in container (user=%user.name container=%container.name shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [container, shell]
+
+    - rule: Detect unexpected outbound connection
+      desc: Detect outbound connections to non-whitelisted IPs
+      condition: >
+        outbound and
+        container and
+        fd.sip != "10.0.0.0/8" and
+        fd.sip != "172.16.0.0/12" and
+        fd.sip != "192.168.0.0/16" and
+        not fd.sip in allowed_outbound_ips
+      output: >
+        Unexpected outbound connection (user=%user.name container=%container.name sip=%fd.sip dport=%fd.dport)
+      priority: WARNING
+      tags: [network, container]
+
+    - rule: Detect write to /etc
+      desc: Detect writes to /etc directory in containers
+      condition: >
+        open_write and
+        container and
+        fd.name startswith "/etc/" and
+        not proc.name in (apt, yum, dnf, pacman)
+      output: >
+        Write to /etc detected (user=%user.name container=%container.name file=%fd.name proc=%proc.name)
+      priority: WARNING
+      tags: [filesystem, container]
+
+    - rule: Detect privilege escalation
+      desc: Detect attempts to escalate privileges
+      condition: >
+        spawned_process and
+        container and
+        proc.name in (sudo, su, chmod, chown) and
+        not user_expected_privilege_escalation
+      output: >
+        Privilege escalation attempt (user=%user.name container=%container.name proc=%proc.name cmdline=%proc.cmdline)
+      priority: CRITICAL
+      tags: [privilege, container]
+
+    - rule: Detect cross-tenant network access
+      desc: Detect cross-namespace connection attempts
+      condition: >
+        outbound and
+        container and
+        k8s.ns.name != fd.snet
+      output: >
+        Cross-tenant network access (user=%user.name container=%container.name src_ns=%k8s.ns.name dst_ns=%fd.snet)
+      priority: HIGH
+      tags: [network, multi-tenancy]
+
+  # Falco config
+  falco.yaml: |
+    falco:
+      priority: debug
+      json_output: true
+      json_include_output_property: true
+      buffered_outputs: true
+      syscall_event_drops:
+        actions:
+          - log
+          - alert
+        rate: 1
+        max_burst: 1
+    plugins:
+      - name: k8saudit
+        library_path: libk8saudit.so
+        init_config:
+          ""
+        open_params: ""
+      - name: cloudtrail
+        library_path: libcloudtrail.so
+        init_config:
+          ""
+        open_params: ""
+---
+# Falco DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: falco
+  namespace: falco
+  labels:
+    app: falco
+spec:
+  selector:
+    matchLabels:
+      app: falco
+  template:
+    metadata:
+      labels:
+        app: falco
+    spec:
+      serviceAccountName: falco
+      hostNetwork: true
+      containers:
+      - name: falco
+        image: falcosecurity/falco:0.38.0
+        args:
+          - /usr/bin/falco
+          - --cri
+          - /run/containerd/containerd.sock
+          - -K
+          - /run/containerd/containerd.sock
+          - -c
+          - /etc/falco/falco.yaml
+          - -r
+          - /etc/falco/rules.d
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: dev
+          mountPath: /host/dev
+          readOnly: true
+        - name: run
+          mountPath: /host/run
+          readOnly: true
+        - name: var-run
+          mountPath: /var/run
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: etc-falco
+          mountPath: /etc/falco
+          readOnly: true
+        - name: etc-falco-rules
+          mountPath: /etc/falco/rules.d
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: run
+        hostPath:
+          path: /run
+      - name: var-run
+        hostPath:
+          path: /var/run
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: etc-falco
+        configMap:
+          name: falco-rules
+          items:
+          - key: falco.yaml
+            path: falco.yaml
+      - name: etc-falco-rules
+        configMap:
+          name: falco-rules
+          items:
+          - key: custom_rules.yaml
+            path: custom_rules.yaml

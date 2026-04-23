@@ -1,0 +1,12 @@
+---
+# Handlers for baseline role
+
+- name: restart ntp
+  ansible.builtin.service:
+    name: ntp
+    state: restarted
+
+- name: restart rsyslog
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted

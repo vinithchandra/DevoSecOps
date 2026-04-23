@@ -1,0 +1,111 @@
+# External Secrets Operator Installation
+# Syncs GCP Secret Manager secrets to Kubernetes Secrets
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+---
+# ClusterSecretStore - GCP Secret Manager backend
+apiVersion: external-secrets.io/v1beta1
+kind: ClusterSecretStore
+metadata:
+  name: gcp-secret-manager
+spec:
+  provider:
+    gcpsm:
+      projectID: PROJECT_ID
+      auth:
+        workloadIdentity:
+          clusterLocation: us-central1
+          clusterName: platform-cluster-dev
+          serviceAccountRef:
+            name: external-secrets-sa
+            namespace: external-secrets
+---
+# ExternalSecret for n8n database credentials
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: n8n-db-credentials
+  namespace: platform-tools
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: n8n-secrets
+    creationPolicy: Owner
+  data:
+  - secretKey: DB_HOST
+    remoteRef:
+      key: n8n-db-host
+  - secretKey: DB_PORT
+    remoteRef:
+      key: n8n-db-port
+  - secretKey: DB_NAME
+    remoteRef:
+      key: n8n-db-name
+  - secretKey: DB_USER
+    remoteRef:
+      key: n8n-db-user
+  - secretKey: DB_PASSWORD
+    remoteRef:
+      key: n8n-db-password
+  - secretKey: N8N_ENCRYPTION_KEY
+    remoteRef:
+      key: n8n-encryption-key
+  - secretKey: WEBHOOK_URL
+    remoteRef:
+      key: n8n-webhook-url
+---
+# ExternalSecret for Grafana credentials
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: grafana-credentials
+  namespace: monitoring
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: grafana-secrets
+    creationPolicy: Owner
+  data:
+  - secretKey: admin-user
+    remoteRef:
+      key: grafana-admin-user
+  - secretKey: admin-password
+    remoteRef:
+      key: grafana-admin-password
+---
+# ExternalSecret for tenant database credentials
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: tenant-db-credentials
+  namespace: tenant-a
+spec:
+  refreshInterval: 15m
+  secretStoreRef:
+    name: gcp-secret-manager
+    kind: ClusterSecretStore
+  target:
+    name: db-credentials
+    creationPolicy: Owner
+  data:
+  - secretKey: host
+    remoteRef:
+      key: tenant-a-db-host
+  - secretKey: name
+    remoteRef:
+      key: tenant-a-db-name
+  - secretKey: user
+    remoteRef:
+      key: tenant-a-db-user
+  - secretKey: password
+    remoteRef:
+      key: tenant-a-db-password

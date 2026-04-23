@@ -1,0 +1,78 @@
+# n8n Helm Values
+# Install: helm install n8n n8n/n8n -n platform-tools -f values.yaml
+
+replicaCount: 2
+
+image:
+  repository: n8nio/n8n
+  tag: 1.50.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5678
+
+ingress:
+  enabled: false
+
+persistence:
+  enabled: false
+
+db:
+  type: postgresdb
+  host: "$(DB_HOST)"
+  port: 5432
+  database: n8n
+  user: "$(DB_USER)"
+
+extraEnv:
+  EXECUTIONS_MODE: queue
+  QUEUE_BULL_REDIS_HOST: redis.platform-tools.svc.cluster.local
+  QUEUE_BULL_REDIS_PORT: "6379"
+  WEBHOOK_URL: https://n8n.platform.dev
+  N8N_METRICS: "true"
+  N8N_METRICS_PREFIX: n8n_
+
+serviceAccount:
+  create: true
+  annotations:
+    iam.gke.io/gcp-service-account: n8n-sa@PROJECT_ID.iam.gserviceaccount.com
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+redis:
+  enabled: true
+  architecture: standalone
+  master:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi

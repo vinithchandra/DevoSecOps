@@ -1,0 +1,81 @@
+# Falco Helm Values
+# Install: helm install falco falcosecurity/falco -n falco -f values.yaml
+
+falco:
+  json_output: true
+  json_include_output_property: true
+  log_level: info
+  syscall_event_drops:
+    actions:
+      - log
+      - alert
+    rate: 1
+    max_burst: 1
+
+falcosidekick:
+  enabled: true
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  config:
+    slack:
+      webhookurl: "https://hooks.slack.com/services/REPLACE"
+      minimumpriority: warning
+    bigquery:
+      projectid: "PROJECT_ID"
+      datasetid: "research"
+      tableid: "falco_events"
+      minimumpriority: warning
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+customRules:
+  custom_rules.yaml: |
+    - rule: Detect exec in container
+      desc: Detect shell execution inside containers
+      condition: >
+        spawned_process and
+        container and
+        shell_procs and
+        not user_expected_shell_spawn
+      output: >
+        Shell spawned in container (user=%user.name container=%container.name
+        shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline)
+      priority: WARNING
+      tags: [container, shell]
+
+    - rule: Detect cross-tenant network access
+      desc: Detect cross-namespace connection attempts
+      condition: >
+        outbound and
+        container and
+        k8s.ns.name != fd.snet
+      output: >
+        Cross-tenant network access (user=%user.name container=%container.name
+        src_ns=%k8s.ns.name dst_ns=%fd.snet)
+      priority: HIGH
+      tags: [network, multi-tenancy]
+
+    - rule: Detect privilege escalation
+      desc: Detect attempts to escalate privileges
+      condition: >
+        spawned_process and
+        container and
+        proc.name in (sudo, su, chmod, chown) and
+        not user_expected_privilege_escalation
+      output: >
+        Privilege escalation attempt (user=%user.name container=%container.name
+        proc=%proc.name cmdline=%proc.cmdline)
+      priority: CRITICAL
+      tags: [privilege, container]

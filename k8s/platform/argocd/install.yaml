@@ -1,0 +1,88 @@
+# ArgoCD Installation
+# This is a placeholder - in production, use Helm chart or official manifests
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  repository.credentials: |
+    - url: https://us-central1-docker.pkg.dev
+      type: gcp
+      gcpServiceAccountEmail: argocd-sa@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-secret
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-secret
+    app.kubernetes.io/part-of: argocd
+type: Opaque
+stringData:
+  # Initial admin password (change after first login)
+  admin.password: "$2a$10$Z2V5Q2Z5bGx6eWJ1cGt5Z2V5Q2Z5bGx6eWJ1cGt5Z2V5Q2Z5bGx6eWJ1cGt5"
+---
+# ArgoCD ApplicationSet for tenant provisioning
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenant-applications
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/your-org/platform
+        revision: HEAD
+        files:
+          - path: "k8s/tenants/*/config.yaml"
+  template:
+    metadata:
+      name: '{{path[1]}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/your-org/platform
+        targetRevision: HEAD
+        path: k8s/tenants/{{path[1]}}
+        helm:
+          valueFiles:
+            - values.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path[1]}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+---
+# ArgoCD Application for platform components
+apiVersion: argoproj.io/v1
+kind: Application
+metadata:
+  name: platform-components
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/platform
+    targetRevision: HEAD
+    path: k8s/platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

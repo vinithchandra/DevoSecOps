@@ -1,0 +1,21 @@
+# Chaos Mesh DNS Failure Experiment
+# For Experiment 3: SLO Calibration
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-failure-experiment
+  namespace: tenant-a
+spec:
+  action: error
+  mode: one
+  selector:
+    namespaces:
+      - tenant-a
+    labelSelectors:
+      app: api
+  patterns:
+    - "postgres.platform.svc.cluster.local"
+  duration: "5m"
+  scheduler:
+    cron: "@every 3h"

@@ -1,0 +1,35 @@
+# OPA Gatekeeper Constraint: Deny Latest Tag
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdenylatesttag
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDenyLatestTag
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdenylatesttag
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          image := container.image
+          endswith(image, ":latest")
+          msg := sprintf("Container %v uses :latest tag which is not allowed", [container.name])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDenyLatestTag
+metadata:
+  name: deny-latest-tag
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    namespaces:
+      - "tenant-*"
+  enforcementAction: deny

@@ -1,0 +1,89 @@
+---
+# Baseline Role
+# Sets up logging, NTP, and base system configuration
+
+- name: Set timezone
+  ansible.builtin.timezone:
+    name: UTC
+
+- name: Install NTP
+  ansible.builtin.apt:
+    name:
+      - ntp
+      - ntpdate
+    state: present
+
+- name: Configure NTP
+  ansible.builtin.template:
+    src: ntp.conf.j2
+    dest: /etc/ntp.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart ntp
+
+- name: Enable and start NTP
+  ansible.builtin.service:
+    name: ntp
+    enabled: yes
+    state: started
+
+- name: Configure rsyslog for remote logging
+  ansible.builtin.lineinfile:
+    path: /etc/rsyslog.conf
+    line: "*.* @@{{ log_server }}:514"
+    state: present
+  when: log_server is defined
+  notify: restart rsyslog
+
+- name: Enable and start rsyslog
+  ansible.builtin.service:
+    name: rsyslog
+    enabled: yes
+    state: started
+
+- name: Configure log rotation
+  ansible.builtin.template:
+    src: logrotate.conf.j2
+    dest: /etc/logrotate.d/custom
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Install common utilities
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - vim
+      - git
+      - htop
+      - net-tools
+      - dnsutils
+      - tcpdump
+      - strace
+      - lsof
+    state: present
+
+- name: Configure system limits
+  ansible.builtin.lineinfile:
+    path: /etc/security/limits.conf
+    line: "{{ item }}"
+    state: present
+  loop:
+    - "* soft nofile 65536"
+    - "* hard nofile 65536"
+    - "* soft nproc 65536"
+    - "* hard nproc 65536"
+
+- name: Configure sysctl for performance
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { name: 'fs.file-max', value: '2097152' }
+    - { name: 'net.core.somaxconn', value: '65535' }
+    - { name: 'net.ipv4.tcp_max_syn_backlog', value: '8192' }
+    - { name: 'net.core.netdev_max_backlog', value: '16384' }

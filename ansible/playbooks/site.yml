@@ -1,0 +1,35 @@
+---
+# Ansible playbook: Apply baseline configuration to all nodes
+- name: Apply baseline configuration
+  hosts: all
+  become: true
+  roles:
+    - baseline
+
+---
+# Ansible playbook: Harden all nodes
+- name: Harden nodes
+  hosts: gke_nodes
+  become: true
+  serial: 1
+  roles:
+    - node-hardening
+
+---
+# Ansible playbook: Deploy monitoring agents
+- name: Deploy monitoring agents
+  hosts: all
+  become: true
+  roles:
+    - monitoring-agent
+
+---
+# Ansible playbook: Full platform bootstrap
+- name: Full platform bootstrap
+  hosts: all
+  become: true
+  serial: 1
+  roles:
+    - baseline
+    - node-hardening
+    - monitoring-agent

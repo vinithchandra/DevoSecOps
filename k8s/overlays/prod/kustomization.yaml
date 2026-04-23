@@ -1,0 +1,55 @@
+# Kustomization for production environment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../platform/argocd/namespace.yaml
+  - ../../platform/istio/namespace.yaml
+  - ../../platform/istio/peer-authentication.yaml
+  - ../../platform/istio/gateway.yaml
+  - ../../platform/gatekeeper/namespace.yaml
+  - ../../platform/gatekeeper/constraints/require-resource-limits.yaml
+  - ../../platform/gatekeeper/constraints/require-non-root.yaml
+  - ../../platform/gatekeeper/constraints/allowed-registries.yaml
+  - ../../platform/gatekeeper/constraints/deny-latest-tag.yaml
+  - ../../platform/falco/namespace.yaml
+  - ../../platform/falco/config.yaml
+  - ../../platform/monitoring/namespace.yaml
+  - ../../platform/monitoring/prometheus-operator.yaml
+  - ../../platform/monitoring/prometheus.yaml
+  - ../../platform/monitoring/loki.yaml
+  - ../../platform/monitoring/promtail.yaml
+  - ../../platform/monitoring/tempo.yaml
+  - ../../platform/monitoring/grafana.yaml
+  - ../../platform/monitoring/opentelemetry-collector.yaml
+  - ../../platform/monitoring/servicemonitors.yaml
+  - ../../platform/cert-manager/install.yaml
+  - ../../platform/external-secrets/install.yaml
+  - ../../platform/velero/install.yaml
+
+commonLabels:
+  environment: prod
+  managed-by: kustomize
+
+patches:
+  - target:
+      kind: Deployment
+      name: grafana
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Prometheus
+      name: k8s
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Deployment
+      name: loki
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3

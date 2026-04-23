@@ -1,0 +1,327 @@
+{
+  "name": "Scheduled DR Drill",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Sunday 02:00 UTC Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#dr-ops",
+        "text": "=🔥 DR Drill Starting\n\nStarting scheduled disaster recovery drill. Killing 50% of worker pods in tenant-a.",
+        "otherOptions": {}
+      },
+      "id": "slack-1",
+      "name": "Notify Start",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kubernetes.default.svc/api/v1/namespaces/tenant-a/pods",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": false,
+        "options": {}
+      },
+      "id": "k8s-api-1",
+      "name": "Get Worker Pods",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT pod_name, kill FROM kubernetes.pods WHERE namespace = 'tenant-a' AND app = 'worker' LIMIT 5"
+      },
+      "id": "chaos-mesh-1",
+      "name": "Apply Chaos Mesh Experiment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "amount": 600,
+        "unit": "seconds"
+      },
+      "id": "wait-1",
+      "name": "Wait 10 Minutes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  error_rate,\n  pod_count,\n  recovery_time_seconds\nFROM `research.chaos_trials`\nWHERE trial_id = '{{ $json.trial_id }}'"
+      },
+      "id": "prometheus-1",
+      "name": "Query Prometheus Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  error_rate < 0.01 as error_rate_ok,\n  recovery_time_seconds < 180 as recovery_ok\nFROM `research.chaos_trials`\nWHERE trial_id = '{{ $json.trial_id }}'"
+      },
+      "id": "if-1",
+      "name": "SLO Met?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kubernetes.default.svc/api/v1/namespaces/tenant-a/pods",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"apiVersion\": \"chaos-mesh.org/v1alpha1\",\n  \"kind\": \"NetworkChaos\",\n  \"metadata\": {\n    \"name\": \"network-partition-drill\",\n    \"namespace\": \"tenant-a\"\n  },\n  \"spec\": {\n    \"action\": \"partition\",\n    \"duration\": \"5m\",\n    \"direction\": \"both\",\n    \"target\": {\n      \"selector\": {\n        \"app\": \"api\"\n      }\n    }\n  }\n}"
+      },
+      "id": "chaos-mesh-2",
+      "name": "Apply Network Partition",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "amount": 300,
+        "unit": "seconds"
+      },
+      "id": "wait-2",
+      "name": "Wait 5 Minutes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  recovery_time_seconds,\n  error_rate\nFROM `research.chaos_trials`\nWHERE trial_id = '{{ $json.trial_id }}'"
+      },
+      "id": "prometheus-2",
+      "name": "Query Recovery Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO `research.dr_drills` VALUES ('{{ $json.drill_id }}', CURRENT_TIMESTAMP(), '{{ $json.error_rate }}', '{{ $json.recovery_time_seconds }}', 'passed')"
+      },
+      "id": "bigquery-1",
+      "name": "Log Drill Results",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#dr-ops",
+        "text": "=✅ DR Drill Complete\n\n**Drill ID**: {{ $json.drill_id }}\n**Error Rate**: {{ $json.error_rate }} (SLO: <1%)\n**Recovery Time**: {{ $json.recovery_time_seconds }}s (SLO: <180s)\n**Status**: PASSED\n\nReport: https://github.com/your-org/platform/actions/runs/{{ $json.run_id }}",
+        "otherOptions": {}
+      },
+      "id": "slack-2",
+      "name": "Post Results",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO `research.dr_drills` VALUES ('{{ $json.drill_id }}', CURRENT_TIMESTAMP(), '{{ $json.error_rate }}', '{{ $json.recovery_time_seconds }}', 'failed')"
+      },
+      "id": "bigquery-2",
+      "name": "Log Failed Drill",
+      "type": "n8n-nodes-base.bigQuery",
+      "typeVersion": 1,
+      "position": [1850, 500]
+    },
+    {
+      "parameters": {
+        "channel": "#dr-ops",
+        "text": "=❌ DR Drill Failed\n\n**Drill ID**: {{ $json.drill_id }}\n**Error Rate**: {{ $json.error_rate }} (SLO: <1%)\n**Recovery Time**: {{ $json.recovery_time_seconds }}s (SLO: <180s)\n**Status**: FAILED\n\nInvestigation required.",
+        "otherOptions": {}
+      },
+      "id": "slack-3",
+      "name": "Alert Failure",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1.1,
+      "position": [2050, 500]
+    }
+  ],
+  "connections": {
+    "Sunday 02:00 UTC Trigger": {
+      "main": [
+        [
+          {
+            "node": "Notify Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Start": {
+      "main": [
+        [
+          {
+            "node": "Get Worker Pods",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Worker Pods": {
+      "main": [
+        [
+          {
+            "node": "Apply Chaos Mesh Experiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Chaos Mesh Experiment": {
+      "main": [
+        [
+          {
+            "node": "Wait 10 Minutes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Query Prometheus Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Prometheus Metrics": {
+      "main": [
+        [
+          {
+            "node": "SLO Met?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SLO Met?": {
+      "main": [
+        [
+          {
+            "node": "Apply Network Partition",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Failed Drill",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Network Partition": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 Minutes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Query Recovery Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Recovery Metrics": {
+      "main": [
+        [
+          {
+            "node": "Log Drill Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Drill Results": {
+      "main": [
+        [
+          {
+            "node": "Post Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Failed Drill": {
+      "main": [
+        [
+          {
+            "node": "Alert Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-09T00:00:00.000Z",
+  "versionId": "1"
+}

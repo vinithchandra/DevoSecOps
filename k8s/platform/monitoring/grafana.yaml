@@ -1,0 +1,156 @@
+# Grafana Dashboard and Visualization
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      serviceAccountName: grafana
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: grafana
+        image: grafana/grafana:11.0.0
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: admin-user
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: admin-password
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-bigquery-datasource,grafana-piechart-panel"
+        - name: GF_SERVER_ROOT_URL
+          value: "https://grafana.platform.dev"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: provisioning
+          mountPath: /etc/grafana/provisioning
+        - name: storage
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-config
+      - name: provisioning
+        configMap:
+          name: grafana-provisioning
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+  namespace: monitoring
+type: Opaque
+stringData:
+  admin-user: "admin"
+  admin-password: "placeholder-replace-with-external-secret"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+data:
+  grafana.ini: |
+    [server]
+    http_port = 3000
+    
+    [database]
+    type = postgres
+    host = grafana-db.platform-tools.svc.cluster.local:5432
+    name = grafana
+    user = grafana
+    password = placeholder-replace-with-external-secret
+    
+    [security]
+    disable_gravatar = true
+    cookie_secure = true
+    cookie_samesite = lax
+    
+    [users]
+    allow_sign_up = false
+    
+    [auth.anonymous]
+    enabled = false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+      isDefault: true
+      editable: false
+    
+    - name: Loki
+      type: loki
+      url: http://loki.monitoring.svc.cluster.local:3100
+      editable: false
+    
+    - name: Tempo
+      type: tempo
+      url: http://tempo.monitoring.svc.cluster.local:3100
+      editable: false
+    
+    - name: BigQuery
+      type: grafana-bigquery-datasource
+      jsonData:
+        projectID: PROJECT_ID
+        defaultProject: PROJECT_ID
+        location: US
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 3000
+  selector:
+    app: grafana

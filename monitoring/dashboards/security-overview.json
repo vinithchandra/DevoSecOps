@@ -1,0 +1,168 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Clean", "color": "green" }, "1": { "text": "Alert", "color": "red" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "expr": "max(falco_alerts_total{priority=\"Critical\"}) or vector(0)", "legendFormat": "Critical Falco Alerts", "refId": "A" }
+      ],
+      "title": "Critical Runtime Alerts",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 20 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "expr": "sum(gatekeeper_violations_total)", "legendFormat": "OPA Violations", "refId": "A" }
+      ],
+      "title": "OPA Gatekeeper Violations",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "expr": "sum(trivy_vulnerabilities_total{severity=\"CRITICAL\"}) or vector(0)", "legendFormat": "Critical CVEs", "refId": "A" }
+      ],
+      "title": "Critical CVEs (Images)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [
+        { "expr": "count(kube_pod_container_status_last_terminated_reason{reason=\"Error\"}) or vector(0)", "legendFormat": "Cosign Unsigned", "refId": "A" }
+      ],
+      "title": "Unsigned Images (Cosign)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(falco_alerts_total[5m])) by (priority)", "legendFormat": "{{priority}}", "refId": "A" }
+      ],
+      "title": "Falco Alert Rate by Priority",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(gatekeeper_violations_total) by (violation_type)", "legendFormat": "{{violation_type}}", "refId": "A" }
+      ],
+      "title": "Gatekeeper Violations by Type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 50, "lineWidth": 1, "showPoints": "never" },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 7,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(increase(trivy_vulnerabilities_total[1h])) by (severity)", "legendFormat": "{{severity}}", "refId": "A" }
+      ],
+      "title": "New Vulnerabilities per Hour by Severity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "mappings": [],
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 8,
+      "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum(rate(falco_alerts_total{rule=\"Detect cross-tenant network access\"}[5m]))", "legendFormat": "Cross-tenant probes", "refId": "A" },
+        { "expr": "sum(rate(falco_alerts_total{rule=\"Detect privilege escalation\"}[5m]))", "legendFormat": "Privilege escalation", "refId": "B" },
+        { "expr": "sum(rate(falco_alerts_total{rule=\"Detect exec in container\"}[5m]))", "legendFormat": "Shell in container", "refId": "C" }
+      ],
+      "title": "Critical Security Events",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["security", "falco", "gatekeeper", "trivy"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Security Overview",
+  "uid": "security-overview",
+  "version": 1
+}
