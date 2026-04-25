@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from google.cloud import bigquery
 from google.api_core import exceptions
 
-PROJECT_ID = os.environ.get("PROJECT_ID", "PROJECT_ID")
+PROJECT_ID = os.environ.get("PROJECT_ID", "devsecops-research")
 DATASET = "research.experiment1_security_ablation"
 
 client = bigquery.Client(project=PROJECT_ID)

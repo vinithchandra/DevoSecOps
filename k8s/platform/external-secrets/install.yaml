@@ -14,7 +14,7 @@ metadata:
 spec:
   provider:
     gcpsm:
-      projectID: PROJECT_ID
+      projectID: devsecops-research
       auth:
         workloadIdentity:
           clusterLocation: us-central1

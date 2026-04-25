@@ -13,7 +13,7 @@ data:
   repository.credentials: |
     - url: https://us-central1-docker.pkg.dev
       type: gcp
-      gcpServiceAccountEmail: argocd-sa@PROJECT_ID.iam.gserviceaccount.com
+      gcpServiceAccountEmail: argocd-sa@devsecops-research.iam.gserviceaccount.com
 ---
 apiVersion: v1
 kind: Secret

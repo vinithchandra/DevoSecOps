@@ -45,7 +45,7 @@ extraEnv:
 serviceAccount:
   create: true
   annotations:
-    iam.gke.io/gcp-service-account: n8n-sa@PROJECT_ID.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: n8n-sa@devsecops-research.iam.gserviceaccount.com
 
 podSecurityContext:
   runAsNonRoot: true

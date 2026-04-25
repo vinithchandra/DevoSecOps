@@ -27,7 +27,7 @@ falcosidekick:
       webhookurl: "https://hooks.slack.com/services/REPLACE"
       minimumpriority: warning
     bigquery:
-      projectid: "PROJECT_ID"
+      projectid: "devsecops-research"
       datasetid: "research"
       tableid: "falco_events"
       minimumpriority: warning

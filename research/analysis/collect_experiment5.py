@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from google.cloud import bigquery
 
-PROJECT_ID = os.environ.get("PROJECT_ID", "PROJECT_ID")
+PROJECT_ID = os.environ.get("PROJECT_ID", "devsecops-research")
 DATASET = "research.experiment5_tenant_isolation"
 
 client = bigquery.Client(project=PROJECT_ID)

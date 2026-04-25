@@ -15,7 +15,7 @@ metadata:
 spec:
   provider: gcp
   objectStorage:
-    bucket: platform-velero-backups-PROJECT_ID
+    bucket: platform-velero-backups-devsecops-research
     prefix: velero
   config:
     region: us-central1

@@ -135,8 +135,8 @@ data:
     - name: BigQuery
       type: grafana-bigquery-datasource
       jsonData:
-        projectID: PROJECT_ID
-        defaultProject: PROJECT_ID
+        projectID: devsecops-research
+        defaultProject: devsecops-research
         location: US
 ---
 apiVersion: v1

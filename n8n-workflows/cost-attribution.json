@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  project.number,\n  project.id as project_id,\n  project.labels.tenant as tenant,\n  SUM(cost) as total_cost,\n  SUM(CASE WHEN usage.unit = 'byte-seconds' THEN usage.amount ELSE 0 END) as storage_bytes,\n  SUM(CASE WHEN usage.unit = 'seconds' THEN usage.amount ELSE 0 END) as compute_seconds\nFROM `PROJECT_ID.billing.gcp_billing_export_v1_XXXXXX`\nWHERE invoice.month = FORMAT_DATE('%Y%m', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))\nGROUP BY project.number, project.id, project.labels.tenant\nHAVING project.labels.tenant IS NOT NULL"
+        "query": "SELECT \n  project.number,\n  project.id as project_id,\n  project.labels.tenant as tenant,\n  SUM(cost) as total_cost,\n  SUM(CASE WHEN usage.unit = 'byte-seconds' THEN usage.amount ELSE 0 END) as storage_bytes,\n  SUM(CASE WHEN usage.unit = 'seconds' THEN usage.amount ELSE 0 END) as compute_seconds\nFROM `devsecops-research.billing.gcp_billing_export_v1_XXXXXX`\nWHERE invoice.month = FORMAT_DATE('%Y%m', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))\nGROUP BY project.number, project.id, project.labels.tenant\nHAVING project.labels.tenant IS NOT NULL"
       },
       "id": "bigquery-billing-1",
       "name": "Query BigQuery Billing Export",
@@ -32,7 +32,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  labels.tenant,\n  AVG(container_cpu_usage_seconds_total) as avg_cpu_seconds,\n  AVG(container_memory_working_set_bytes) as avg_memory_bytes,\n  SUM(container_cpu_usage_seconds_total) as total_cpu_seconds\nFROM `PROJECT_ID.gke_cluster.resource_usage`\nWHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\nGROUP BY labels.tenant"
+        "query": "SELECT \n  labels.tenant,\n  AVG(container_cpu_usage_seconds_total) as avg_cpu_seconds,\n  AVG(container_memory_working_set_bytes) as avg_memory_bytes,\n  SUM(container_cpu_usage_seconds_total) as total_cpu_seconds\nFROM `devsecops-research.gke_cluster.resource_usage`\nWHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\nGROUP BY labels.tenant"
       },
       "id": "prometheus-1",
       "name": "Query Prometheus Usage Metrics",

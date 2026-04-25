@@ -23,7 +23,7 @@ metadata:
   name: n8n-sa
   namespace: platform-tools
   annotations:
-    iam.gke.io/gcp-service-account: n8n-sa@PROJECT_ID.iam.gserviceaccount.com
+    iam.gke.io/gcp-service-account: n8n-sa@devsecops-research.iam.gserviceaccount.com
 ---
 apiVersion: apps/v1
 kind: Deployment
